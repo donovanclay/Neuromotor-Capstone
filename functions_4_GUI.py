@@ -128,7 +128,6 @@ def Eeg_data_function(Patient_numb='/SL01', trial_numbers=[1,2,3], time_interval
 # new=patient_1.drop_isel(Channel=-1)
 # print(new.shape,patient_1.shape)
 
-
 def joint_data_function(Patient_numb='/SL01', trial_numbers=[1], time_interval=[2,17], frequency=100):
     ''' Loads eeg data from specified patient and returns an xarray
     Inputs: 
