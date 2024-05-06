@@ -6,21 +6,47 @@ from bs4 import BeautifulSoup
 import os
 import warnings
 from statsmodels.robust.scale import huber
-from mne._fiff.pick import _MEG_CH_TYPES_SPLIT
-from mne.utils import (fill_doc, _check_sphere,_validate_type,
-                        _check_option,logger) #take out last
-from mne.defaults import (
-    _BORDER_DEFAULT,
-    _EXTRAPOLATE_DEFAULT,
-    _INTERPOLATION_DEFAULT)
+import getpass
+import subprocess
+# from PyQt5.QtCore import QtInfoMsg, QtWarningMsg, QtCriticalMsg
 
-from PyQt5.QtCore import QtInfoMsg, QtWarningMsg, QtCriticalMsg
-# comment out windows path as needed
-Windows_path='/mnt/c/Users/Heather/Desktop/Neuromotor/RepositoryData'
+# commands to manually add path if needed (all wsl2)
+Windows_path='/mnt/c/Users/heather/Desktop/Neuromotor/RepositoryData'
 path_all = '../RepositoryData'
 path_all= Windows_path # Comment out as needed
 
+def get_windows_username():
+    try:
+        result = subprocess.run(['wslvar', 'USERNAME'], capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            print(f"Error: {result.stderr.strip()}")
+            return None
+    except Exception as e:
+        print(f"Error retrieving Windows username: {e}")
+        return None
+    
+def get_desktop_path():
+    if os.name == 'posix':  # Checking if the OS is POSIX (Linux or WSL)
+        wsl_mount = '/mnt/'
+        for root, dirs, files in os.walk(wsl_mount):
+            if 'Users' in dirs:
+                user_name=get_windows_username()
+                if user_name:
+                    user_path = os.path.join(root, 'Users', user_name, 'Desktop')
+                    try:
+                        if os.path.exists(user_path):
+                            return user_path
+                    except OSError as e:
+                        print(f"Error accessing {user_path}: {e}")
+                        continue
+    else:
+        return os.path.join(os.path.expanduser('~'), 'Desktop')
 
+def set_file_path(over_all_path):
+    global path_all  # Declare path_all as global before using it
+    path_all = over_all_path 
 
 def electrode_labels(Patient_numb='/SL01'):
     sgl_ele_labels= path_all +Patient_numb+'-T01'+'/impedances-before.txt'
@@ -30,7 +56,7 @@ def electrode_labels(Patient_numb='/SL01'):
     ele_labels=ele_labels.drop(0)
     return ele_labels
 
-    
+# print(electrode_labels())
 
 def drop_excluded_EoG(Patient_numb='/SL01'): 
     ele_labels=electrode_labels(Patient_numb='/SL01')
@@ -183,7 +209,6 @@ def spatial_data_function(Patient_numb='/SL01', trial_numbers=[1], drop_ref=True
         for i in range(len(Name)): 
             if drop_ref==True:
                 if Name[i].get_text() in dropped_electrodes:
-                    print(Name[i].get_text())
                     pass
                 else:
                     rows = [Name[i].get_text(), float(X[i].get_text()), 

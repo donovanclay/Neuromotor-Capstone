@@ -22,6 +22,7 @@ from uuid import uuid4
 import matplotlib
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+from os.path import expanduser
 
 # Processing_HUB coordinates communication between other classes
 class Processing_HUB(QObject):
@@ -40,6 +41,11 @@ class Processing_HUB(QObject):
         self.test_dataset=None
         self.data_selected=self.data_size_dictionary['Single subject: One session']
         self.eeg_raw=None
+
+    def set_folder_path(self, over_all_path):
+        Folder_path = os.path.abspath(os.path.join(over_all_path))
+        # F4G.set_file_path(Folder_path)
+        print(Folder_path)
         
     def initial_file_opening(self, **kwargs):
         self.data_selection()
@@ -252,8 +258,10 @@ class MainWindow(QDialog):
         super().__init__()
         self.current_index=0
         self.last_index=2
+        self.opersys=0 # default value
         self.can_go_back=[0,1,0] # 0 : cannot go back, 1: can go back
         self.show_vid1=[0,1,0]
+        self.oper_type=['Windows:environment WSL2', 'Non-Windows: WSL2', 'Opsys not supported']
         self.select_subject={'Subject 1':1,'Subject 2':2, 'Subject 3':3,'Subject 4':4,
                                    'Subject 5':5 ,'Subject 6': 6,'Subject 7': 7,'Subject 8':8}
         self.data_size=['Single subject: One session','Single subject: Three sessions', 'Entire dataset']
@@ -349,6 +357,13 @@ class MainWindow(QDialog):
             self.setWindowTitle("Selecting amount data")
             self.page_data_load=QWidget()
 
+            # load data button (will be added to next button later)
+            self.folder_button = QPushButton(self.page_data_load, text="Select folder with data")
+            self.folder_button.setGeometry(600, 10, 200, 60)
+            self.folder_button.clicked.connect(self.pass_rep_folder)
+            self.folder_button.setVisible(False)
+
+
             # Selecting patient number
             self.comboBox1 = QComboBox(self)
             self.comboBox1.setGeometry(100, 600, 200, 60)
@@ -356,7 +371,7 @@ class MainWindow(QDialog):
             self.Box_label = QLabel('Subject on video', self)
             self.Box_label.move(100, 560)
             self.comboBox1.currentIndexChanged.connect(self.subject_sel)
-            self.comboBox1.setVisible(True)
+            self.comboBox1.setVisible(False)
 
             # Selecting Dataset training size
             self.comboBox2 = QComboBox(self)
@@ -366,7 +381,21 @@ class MainWindow(QDialog):
             self.Box_label2.move(300, 560)
             self.current_sel=self.data_size[self.comboBox2.currentIndex()]
             self.comboBox2.currentIndexChanged.connect(self.data_size_select)
-            self.comboBox2.setVisible(True)
+            self.comboBox2.setVisible(False)
+
+                        # Selecting os
+            self.Opselect = QComboBox(self.page_data_load)
+            self.Opselect.setGeometry(700, 100, 200, 60)
+            self.Opselect.addItems(self.oper_type)  # Use the correct method drop-down options
+            self.Ops_label = QLabel('Select os & env', self.page_data_load)
+            self.Ops_label.move(700, 50)
+            self.Opselect.currentIndexChanged.connect(self.on_os_changed)
+            self.Box_label.setVisible(False)
+            self.Box_label2.setVisible(False)
+            # load data button (will be added to next button later)
+            self.confirm_button = QPushButton(self.page_data_load, text="Press to confirm")
+            self.confirm_button.setGeometry(700, 200, 200, 60)
+            self.confirm_button.clicked.connect(self.path_selector)
 
             # load data button (will be added to next button later)
             self.load_button = QPushButton(self.page_data_load, text="Select to load data")
@@ -374,6 +403,7 @@ class MainWindow(QDialog):
             self.load_button.setGeometry(600, 80, 200, 60)
             self.load_button.clicked.connect(self.get_initial_data)
             self. page1=self.MidStack.addWidget(self.page_data_load)
+            self.load_button.setVisible(False)
             print('intitializing widget 1st')
             return self. page1
         
@@ -387,13 +417,29 @@ class MainWindow(QDialog):
             self.page2=self.MidStack.addWidget(self.page_CA_verification)
             print('intitializing widget 2nd')
             return self.page2
+    def on_os_changed(self):
+        self.opersys=self.Opselect.currentIndex()
 
+    def path_selector(self):
+        self.folder_button.setVisible(True)
+        self.Opselect.setVisible(False)
+        self.Ops_label.setVisible(False)
+        print(self.opersys)
+        if self.opersys==0:
+            path=F4G.get_desktop_path()
+        else:
+             path=''
+        print(path)
+        return path
+    
     @ pyqtSlot()
     def select_type_of_model(self): 
             self.thread.model()
             self.delete_widgets(self.select_model_button)
             if self.value==1:
                 self.load_button.setVisible(True)
+                self.load_button.setVisible(True)
+                self.load_button.setVisible(T)
 
     @ pyqtSlot(QImage)
     def displayFrame(self, Image):
@@ -401,8 +447,12 @@ class MainWindow(QDialog):
 
     @ pyqtSlot()
     def get_initial_data(self): 
-            self.thread.initial_file_opening()
             self.load_button.setVisible(False)
+            self.comboBox2.setVisible(False)
+            self.comboBox1.setVisible(False)
+            self.Box_label.setVisible(False)
+            self.Box_label2.setVisible(False)
+            self.thread.initial_file_opening()
             self.next_btn.setVisible(True)
 
     @ pyqtSlot()
@@ -431,6 +481,21 @@ class MainWindow(QDialog):
     def data_size_select(self):
         value = self.comboBox2.currentText()
         self.thread.select_data_size(value)
+
+    @pyqtSlot()
+    def pass_rep_folder(self):
+        path=self.path_selector()
+        folder_path = QFileDialog.getExistingDirectory(self, "Select RepositoryData folder", path)
+        if not folder_path:  
+            return    
+        self.thread.set_folder_path(folder_path)  
+        self.folder_button.setVisible(False)
+        self.comboBox2.setVisible(True)
+        self.comboBox1.setVisible(True)
+        self.Box_label.setVisible(True)
+        self.Box_label2.setVisible(True)
+        self.confirm_button.setVisible(False)
+        self.load_button.setVisible(True)
     
 if __name__ == "__main__":
     app = QApplication(sys.argv)
