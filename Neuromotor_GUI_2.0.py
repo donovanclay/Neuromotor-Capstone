@@ -288,6 +288,7 @@ class MainWindow(QDialog):
         self.next_btn.setGeometry(600, 20, 200, 60)
         self.next_btn.clicked.connect(self.next_control_set)
         self.topLayout.addWidget(self.next_btn,0, 2, Qt.AlignRight )
+        self.next_btn.setVisible(False)
 
         self.display_vid1 = QLabel(self)
         self.display_vid1.setFixedSize(640, 480)
@@ -407,6 +408,7 @@ class MainWindow(QDialog):
     def get_initial_data(self): 
             self.thread.initial_file_opening()
             self.load_button.setVisible(False)
+            self.next_btn.setVisible(True)
 
     @ pyqtSlot()
     def play_eeg(self): 
