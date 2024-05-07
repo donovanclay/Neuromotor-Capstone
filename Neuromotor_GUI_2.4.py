@@ -71,9 +71,9 @@ class Processing_HUB(QObject):
         elif self.data_selected in [0, 1]:  
             self.eeg_data = self.eeg_array
         self.eeg_previous = self.eeg_data.isel(Trial=0).copy()
-        print(self.eeg_previous.Channel.shape)
     
     def data_selection(self): # might be better to use a more randomized method but this is okay for now
+        self.spatial=F4G.spatial_data_function(self.subject)
         if self.data_selected==0:
             self.trails=[1]
         else: 
@@ -94,7 +94,7 @@ class Processing_HUB(QObject):
     def change_subject(self, subject):
         self.subject_selected=subject # Numerical
         self.subject=self.get_subject(subject) # Dictionary value
-        print(self.subject)
+        
 
     def get_subject(self,value):
         for key, val in self.subject_dict.items():
@@ -152,7 +152,6 @@ class Processing_HUB(QObject):
     def function_controler(self):
             if self.current_index==1:
                 input=self.eeg_previous.isel(Channel=12)
-                print(input.shape)
                 self.bandpass_filter(data=input,highcut=self.slider_value_3,lowcut=self.slider_value_2,fs=self.fs,order=self.slider_value)
                 self.graph_band_pass()
 
@@ -362,12 +361,11 @@ class Dispaly_video1(QThread):
         self.get_xy_coords()
         self.get_video()
 
-
     def get_video(self):
         self.stop_thread = False
         if self.eeg_data is not None:
             while self.ThreadActive:
-                for i in range(self.frame_index, self.eeg_data[0].values.shape[0]-self.vid_frame_rate,self.vid_frame_rate):
+                for i in range(self.frame_index, self.eeg_data.values.shape[0]-self.vid_frame_rate,self.vid_frame_rate):
                     if not self.stop_thread:
                         image_array = self.eeg_image(i)
                         if image_array is not None:
@@ -402,7 +400,7 @@ class Dispaly_video1(QThread):
         matplotlib.use('Agg')
         upper_bound = index_point + self.average_half
         lower_bound = index_point - self.average_half
-        average_eeg = pd.DataFrame(self.eeg_data[0].isel(Recording=range(lower_bound, upper_bound)).values).mean()  # change 0 for more than 1 sess
+        average_eeg = pd.DataFrame(self.eeg_data.isel(Recording=range(lower_bound, upper_bound)).values).mean()  # change 0 for more than 1 sess
         average_eeg = average_eeg.transpose()
         # Generate the topomap
         fig, ax = plt.subplots()
@@ -424,8 +422,6 @@ class Dispaly_video1(QThread):
             x=x/(np.max(x))
             y=y/(np.max(y))
             self.xy=np.stack((x, y), axis=1)
-            # print(self.xy.shape)
-            # print(self.eeg_data.shape)
             self.channels=len(self.spatial_data[0])
             # channel type from literature
             chan_type=['eeg']*self.channels
@@ -600,7 +596,6 @@ class MainWindow(QDialog):
             self.load_button.clicked.connect(self.get_initial_data)
             self. page1=self.MidStack.addWidget(self.page_data_load)
             self.load_button.setVisible(False)
-            print('intitializing widget 1st')
             return self. page1
     
     def Bandpass_page(self):
@@ -628,7 +623,6 @@ class MainWindow(QDialog):
             self.eeg_button.move(450,20)
             self.eeg_button.setVisible(True)
             self.page2=self.MidStack.addWidget(self.page_CA_verification)
-            print('intitializing widget 2nd')
             return self.page2
     def on_os_changed(self):
         self.opersys=self.Opselect.currentIndex()
@@ -638,12 +632,10 @@ class MainWindow(QDialog):
         self.Opselect.setVisible(False)
         self.Ops_label.setVisible(False)
         self.confirm_button.setVisible(False)
-        print(self.opersys)
         if self.opersys==0:
             path=F4G.get_desktop_path()
         else:
              path=''
-        print(path)
         return path
     
     def slider_deck(self,widget, page_index):
