@@ -71,9 +71,9 @@ class Processing_HUB(QObject):
         elif self.data_selected in [0, 1]:  
             self.eeg_data = self.eeg_array
         self.eeg_previous = self.eeg_data.isel(Trial=0).copy()
+        print(self.eeg_previous.Channel.shape)
     
     def data_selection(self): # might be better to use a more randomized method but this is okay for now
-        self.spatial=F4G.spatial_data_function(self.subject)
         if self.data_selected==0:
             self.trails=[1]
         else: 
