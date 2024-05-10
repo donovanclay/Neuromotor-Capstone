@@ -8,7 +8,7 @@ import warnings
 from statsmodels.robust.scale import huber
 import getpass
 import subprocess
-# from PyQt5.QtCore import QtInfoMsg, QtWarningMsg, QtCriticalMsg
+from scipy.interpolate import interp1d
 
 # commands to manually add path if needed (all wsl2)
 Windows_path='/mnt/c/Users/heather/Desktop/Neuromotor/RepositoryData'
@@ -124,25 +124,46 @@ def Eeg_data_function(Patient_numb='/SL01', trial_numbers=[1,2,3], time_interval
         )
     return eeg_data
 
-# patient_1 = Eeg_data_function()
-# new=patient_1.drop_isel(Channel=-1)
-# print(new.shape,patient_1.shape)
 
+def velocity_function(data, time, interval, length):
+    joints = int(data.shape[1])
+    side1 = (interval - 1) // 2
+    side2=side1+1
+    size = len(range(side1, length - side2, interval))
+    velocity = np.empty((size, joints), dtype=float)
+    warnings.simplefilter('ignore', np.RankWarning)
+    for j in range(joints):
+        one_joint = data[:, j]
+        for i in range(side1, length - side2, interval):
+            m, _ = np.polyfit(one_joint[i-side1:i+side2], time[i-side1:i+side2], deg=1)
+            velocity[i // interval][j] = m
+    return velocity
 
-def joint_data_function(Patient_numb='/SL01', trial_numbers=[1], time_interval=[2,17], frequency=100):
+def joint_data_function(Patient_numb='/SL01', trial_numbers=[1], time_interval=[2,17], frequency=100, inter=5):
     ''' Loads eeg data from specified patient and returns an xarray
     Inputs: 
     Patient_numb: string example '/SL01'
     trial_numbers: array example [1] which would be trial 1 or  [2,3] (trials 2 & 3)
     time_interval: array containing time interval in minutes [beginning, end]
     frequency: integer in s^-1
+    int: must be odd, interval velocity is fitted to
     Outputs:
     joint_data: xarray
     '''
     # Load the data
+    length=90000
+    interval=inter
+    size=length//inter
     fs = frequency
     Trial_path=['-T01/joints.txt','-T02/joints.txt','-T03/joints.txt']  # Corrected path for different trials
     j_data = np.empty((len(trial_numbers), 90000, 6), dtype=float)  # Initialize eeg_data as multi-dimensional array
+    velc_data=np.empty((len(trial_numbers), size-1 , 6), dtype=float) 
+    j_angl = pd.read_csv(path_all + Patient_numb+Trial_path[0], sep='\t', header=None ,names=list(range(14)), skiprows=2)
+    j_angl.dropna(axis=1, how='all', inplace=True)
+    j_time = j_angl.iloc[:, 0]
+    timew= j_time.drop(range(time_interval[0]*60*fs))
+    timew = timew.drop(range(time_interval[1]*60*fs-1, timew.index[-1]))
+    timew = timew.to_numpy()
     for i, trial in enumerate(trial_numbers):
         # Remove the first 2 lines of the file using skiprows
         j_angl = pd.read_csv(path_all + Patient_numb+Trial_path[trial-1], sep='\t', header=None ,names=list(range(14)), skiprows=2)
@@ -157,6 +178,7 @@ def joint_data_function(Patient_numb='/SL01', trial_numbers=[1], time_interval=[
         j_walk = j_walk.drop(range(time_interval[1]*60*fs-1, j_walk.index[-1]))
         j_walk = j_walk.to_numpy()
         j_data[i] = j_walk  
+        velc_data[i] = velocity_function(j_walk,timew, interval, length)
     timew= j_time.drop(range(time_interval[0]*60*fs))
     timew = timew.drop(range(time_interval[1]*60*fs-1, timew.index[-1]))
     timew = timew.to_numpy()
@@ -170,11 +192,19 @@ def joint_data_function(Patient_numb='/SL01', trial_numbers=[1], time_interval=[
                 "Time": ( "Recording", timew),  # Include time as a coordinate
             },
         )
-    return joint_data
+    velocity_data = DataArray(
+            velc_data,
+            dims=["Trial", "Recording", "Channel"],
+            coords={
+                "Trial": trial_numbers,
+                "Recording": np.arange(velc_data.shape[1]),
+                "Channel": np.arange(velc_data.shape[2])})
+    return joint_data, velocity_data
 
 # joint testing
-# joint1=joint_data_function()
-#print(joint1[0].values.shape)
+# joint1,velocity=joint_data_function()
+# print(type(velocity))
+
 
 def spatial_data_function(Patient_numb='/SL01', trial_numbers=[1], drop_ref=True):
     ''' Loads eeg data from specified patient and returns an xarray
