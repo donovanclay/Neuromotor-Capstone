@@ -848,7 +848,7 @@ class MainWindow(QDialog):
     
     def transform_page(self):
         self.page_trans=QWidget()
-        self.save_xarrays = QPushButton("Select to play eeg", self.page_trans)
+        self.save_xarrays = QPushButton("Save Data", self.page_trans)
         self.save_xarrays.clicked.connect(self.save_xarray)
         self.save_xarrays.move(450,20)
         self.save_xarrays.setVisible(True)
