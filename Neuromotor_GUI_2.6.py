@@ -3,7 +3,7 @@ import time
 import os
 from PyQt5.QtCore import Qt, QObject, QRunnable, QThreadPool, QThread, pyqtSignal, pyqtSlot, QRect
 import numpy as np
-import functions_4_GUI2 as F4G
+import functions_4_GUI3 as F4G
 from mne.viz import plot_topomap
 import matplotlib.pyplot as plt
 sys.setrecursionlimit(10**6)
@@ -25,6 +25,7 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 import scipy.signal as sig
 import matplotlib.patches as patches
+import asyncio
 
 # Processing_HUB coordinates communication between other classes
 class Processing_HUB(QObject):
@@ -59,15 +60,30 @@ class Processing_HUB(QObject):
         self.method=None
         self.play_eeg_instance2=None
         self.Update_previous=[2,3] # index where previous eeg is updated
+        self.velocity_array=None
+        self.joint_array=None
 
 ### Functions below are for data loading
     def set_folder_path(self, over_all_path):
         Folder_path = os.path.abspath(os.path.join(over_all_path))
         
-    def get_xarray(self):  # Returns the current xarrays for saving
-        return self.eeg_array, self.velocity_array # may need to change for selecting entire dataset
+    def get_eeg(self):  # Returns the current xarrays for saving
+        return self.eeg_array # may need to change for selecting entire dataset
+    
+    def get_velocity(self):
+        if self.velocity_array is not None:
+              velocity_data=self.velocity_array
+        else:
+             raise ValueError('Velocity is still being computed or has not been loaded.')
+        return velocity_data
+    
+    def get_joint(self):
+        if self.joint_array is not None:
+              joint_data=self.joint_array
+        else:
+             raise ValueError('Velocity is still being computed or has not been loaded.')
+        return joint_data
 
-        
     def initial_file_opening(self, **kwargs):
         self.data_selection()
         self.data_for_viz()
@@ -82,7 +98,7 @@ class Processing_HUB(QObject):
         if self.current_index==0:
              self.eeg_raw=self.eeg_previous
     
-    def data_selection(self): # might be better to use a more randomized method but this is okay for now
+    def data_selection(self): 
         self.spatial=F4G.spatial_data_function(self.subject)
         if self.data_selected==0:
             self.trials=[1]
@@ -90,9 +106,20 @@ class Processing_HUB(QObject):
             self.trials=[1, 2, 3]
         if self.data_selected in [0,1]:
             self.eeg_array=F4G.Eeg_data_function(self.subject, self.trials, [2,17])
-            self.joint_array, self.velocity_array=F4G.joint_data_function(self.subject, self.trials, [2,17])     
+            self.start_joint_data_processing() # since we don't need this right away we let this run in background   
         elif self.data_selected==2:
             self.get_all_data()
+
+    def start_joint_data_processing(self):
+        self.delay = delayed_data_processing(self.subject, self.trials)
+        self.delay.joint_data_processed.connect(self.handle_joint_data_processed)
+        self.delay.start()
+
+    @pyqtSlot(object, object)
+    def handle_joint_data_processed(self, joint_array, velocity_array):
+        self.joint_array = joint_array
+        self.velocity_array = velocity_array
+        pass
 
     def get_all_data(self):
             self.eeg_array=[]
@@ -622,7 +649,7 @@ class Display_video2(QThread):
 
     def continue_video(self):
         if not self.stop_thread:
-            self.get_video()  # Continue fetching frames
+            self.get_video()  
 
     def eeg_image(self, index_point):
         try:
@@ -637,19 +664,29 @@ class Display_video2(QThread):
             plt.ylabel('Amplitude')
             plt.xlim([lower_bound, upper_bound])
             plt.legend()
-
             fig.canvas.draw()
             buf = fig.canvas.buffer_rgba()
             l, b, w, h = fig.bbox.bounds
             image_array = np.frombuffer(buf, np.uint8).copy()
             image_array.shape = int(h), int(w), 4
-            # Remove alpha channel
             image_array = image_array[:, :, :3]
             plt.close(fig)
             return image_array
         except Exception as e:
             print('An error occurred in generating EEG image:', e)
             return None
+
+class delayed_data_processing(QThread):
+    joint_data_processed = pyqtSignal(object, object)
+    def __init__(self, subject, trials):
+        super().__init__()
+        self.subject = subject
+        self.trials = trials
+
+    def run(self):
+        joint_array, velocity_array = F4G.joint_data_function(self.subject, self.trials, [2, 17])
+        self.joint_data_processed.emit(joint_array, velocity_array)       
+
 
 # MainWindow handles all displays/interactions
 class MainWindow(QDialog):
@@ -707,10 +744,9 @@ class MainWindow(QDialog):
         self.display_vid1.setScaledContents(True) 
         # Allows for stacked layout which acts like tabs with separate pages
         self.topLayout.addWidget(self.display_vid1, 2,1, Qt.AlignLeft)
-
         self.display_vid2 = QLabel(self)
         self.display_vid2.setScaledContents(True) 
-        # self.display_vid2.setGeometry(100, 100, 200, 400)
+        self.empty_label = QLabel('',self)
         # Allows for stacked layout which acts like tabs with separate pages
         self.Btm_layout.addWidget(self.display_vid2)
 
@@ -728,6 +764,7 @@ class MainWindow(QDialog):
             self.Bandpass_page()
             self.component_page()
             self.visual_denoising_verification()
+            self.save_data_page()
             self.transform_page()
             self.Button_manager=[[self.comboBox1,self.Box_label, self.comboBox2,self.Box_label2],[0],[0],[0],[0], [0]]
 
@@ -848,12 +885,24 @@ class MainWindow(QDialog):
     
     def transform_page(self):
         self.page_trans=QWidget()
-        self.save_xarrays = QPushButton("Save Data", self.page_trans)
-        self.save_xarrays.clicked.connect(self.save_xarray)
-        self.save_xarrays.move(450,20)
-        self.save_xarrays.setVisible(True)
         self.page3=self.MidStack.addWidget(self.page_trans)
         return self.page3
+    
+    def save_data_page(self):
+        self.page_saving=QWidget()
+        self.save_xarrays = QPushButton("Save EEG data", self.page_saving)
+        self.save_xarrays.clicked.connect(self.save_eeg)
+        self.save_xarrays.move(100,20)
+        self.save_xarrays.setVisible(True)
+        self.save_xarrays = QPushButton("Save velocity data", self.page_saving)
+        self.save_xarrays.clicked.connect(self.save_velocity)
+        self.save_xarrays.move(320,20)
+        self.save_xarrays.setVisible(True)
+        self.save_xarrays = QPushButton("Save joint data", self.page_saving)
+        self.save_xarrays.clicked.connect(self.save_joint)
+        self.save_xarrays.move(540,20)
+        self.save_xarrays.setVisible(True)
+        self.page3=self.MidStack.addWidget(self.page_saving)
          
     def on_os_changed(self):
         self.opersys=self.Opselect.currentIndex()
@@ -1013,14 +1062,32 @@ class MainWindow(QDialog):
         self.current_label_3.setText("{0}: {1}".format(self.slider_name[self.current_index][2], str(current_value_3))) 
     
     @pyqtSlot()
-    def save_xarray(self):
+    def save_eeg(self):
         save_path1, _ = QFileDialog.getSaveFileName(self, 'Save EEG data', '', 'NetCDF files (*.nc)')
         if save_path1:
-            eeg_data,velocity_data =self.thread.get_xarray()
+            eeg_data=self.thread.get_eeg()
             eeg_data.to_netcdf(save_path1)
+
+    @pyqtSlot()
+    def save_velocity(self):    
         save_path2, _ = QFileDialog.getSaveFileName(self, 'Save velocity data', '', 'NetCDF files (*.nc)')
         if save_path2:
-            velocity_data.to_netcdf(save_path2)
+            try:
+                velocity_data =self.thread.get_velocity()
+                velocity_data.to_netcdf(save_path2)
+            except ValueError as e:
+                print(f"Error: {e}")
+
+    @pyqtSlot()
+    def save_joint(self):    
+        save_path3, _ = QFileDialog.getSaveFileName(self, 'Save velocity data', '', 'NetCDF files (*.nc)')
+        if save_path3:
+            try:
+                joint_data =self.thread.get_joint()
+                joint_data.to_netcdf(save_path3)
+            except ValueError as e:
+                print(f"Error: {e}")
+        
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
