@@ -65,6 +65,16 @@ def drop_excluded_EoG(Patient_numb='/SL01'):
     EOG_indx=EOG_labels.index
     return EOG_indx
 
+def get_included_chan_names():
+    indices=drop_excluded_EoG()
+    names=electrode_labels()
+    names=names.drop(indices)
+    ref_labels=[' Ref', ' Gnd']
+    ref_labels=names[names.iloc[:].isin(ref_labels)]
+    ref_indx=ref_labels.index
+    names=names.drop(ref_indx).to_list()
+    return names
+
 def normalize_eeg(eeg_walk):
     for i in range(eeg_walk.shape[1]):
         Hmean,Hstd= huber(eeg_walk.iloc[:, i])
@@ -294,8 +304,6 @@ def spatial_data_function(Patient_numb='/SL01', trial_numbers=[1], drop_ref=True
     return spatial_data
 
 # Spatial testing
-# patient_spatial=spatial_data_function()
-# electrodes=patient_spatial.sel(Values=0)
 # electrodes = electrodes.values  # Convert DataArray to numpy array
 # electrodes=electrodes[0]
 # electrodes_2 = electrode_labels().values  # Convert DataArray to numpy array
@@ -311,12 +319,6 @@ def spatial_data_function(Patient_numb='/SL01', trial_numbers=[1], drop_ref=True
 # one_sel=patient_spatial.sel(Values=1).astype(float).to_numpy()
 # print(one_sel[0][:])
 
-def get_EoG_index():
-        # Loading electrode labels
-        ele_imp = pd.read_csv(path_all+'/SL01-T01/impedances-before.txt', sep='\t', header=None , skiprows=2, names=list(range(5)))
-        ele_labels=ele_imp[1]
-        ele_labels=ele_labels.drop(0)
-        EOG_labels=[' TP9', 'TP10', ' FT9', 'FT10']
-        EOG_labels=ele_labels[ele_labels.iloc[:].isin(EOG_labels)]
-        return EOG_labels.index
+
+    
 
