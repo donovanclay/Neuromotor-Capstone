@@ -2,21 +2,29 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from tqdm import tqdm
+from sklearn.decomposition import PCA
+from sklearn.model_selection import TimeSeriesSplit
+import torch.nn as nn
 
+# Assuming the fft and lp functions are defined elsewhere
 from fft import lp, fourier_transform
 
-print("hello")
-
+def apply_pca(eeg_data, n_components):
+    """
+    Applies PCA to reduce the dimensionality of EEG data.
+    
+    :param eeg_data: (n_samples, n_features, sequence_length)
+    :param n_components: int
+    :return: Transformed EEG data with reduced dimensions
+    """
+    num_samples, num_channels, sequence_length = eeg_data.shape
+    reshaped_data = eeg_data.transpose(0, 2, 1).reshape(-1, num_channels)  # Reshape for PCA
+    pca = PCA(n_components=n_components)
+    reduced_data = pca.fit_transform(reshaped_data)
+    reduced_data = reduced_data.reshape(num_samples, sequence_length, n_components).transpose(0, 2, 1)  # Reshape back
+    return reduced_data
 
 def make_windows_with_fft(pca_eeg, joint_data, eeg_window_size, joint_window_size, offset, lowpass_cutoff=49, debug=False):
-    """
-    :param pca_eeg: (n_samples, n_features)
-    :param joint_data: (n_samples, n_features)
-    :param window_size: int
-    :param offset: int
-    :param debug: bool
-    :return: (n_windows, window_size, n_features)
-    """
     for channel in pca_eeg:
         channel = lp(channel, lowpass_cutoff)
 
@@ -45,7 +53,6 @@ def make_windows_with_fft(pca_eeg, joint_data, eeg_window_size, joint_window_siz
         print("joint_windows[0].shape", joint_windows[0].shape)
 
     for i in range(n_windows):
-
         pairs_per_channel = []
         for channel in range(n_features):
             window = eeg_windows[i]
@@ -60,7 +67,6 @@ def make_windows_with_fft(pca_eeg, joint_data, eeg_window_size, joint_window_siz
         labels.append(average_joint)
 
     return data, labels
-
 
 def make_data_loader(data, labels, batch_size, shuffle=True):
     class CustomDataset(Dataset):
@@ -77,28 +83,9 @@ def make_data_loader(data, labels, batch_size, shuffle=True):
             return sample, label
         
     dataset = CustomDataset(data, labels)
-
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 def create_time_series_dataloaders(data, labels, batch_size, n_splits=5):
-    """
-    Creates DataLoader objects for time series data with time-based splitting.
-
-    Args:
-    - data (array-like): The time series data.
-    - labels (array-like): The corresponding labels.
-    - batch_size (int): The batch size for DataLoader objects.
-    - n_splits (int): The number of splits for time series splitting (default: 5).
-
-    Returns:
-    - dataloaders (list): A list of DataLoader objects for each split.
-    - train_indices_list (list): A list of train indices for each split.
-    - test_indices_list (list): A list of test indices for each split.
-    - train_data_list (list): A list of train data arrays for each split.
-    - test_data_list (list): A list of test data arrays for each split.
-    - train_labels_list (list): A list of train label arrays for each split.
-    - test_labels_list (list): A list of test label arrays for each split.
-    """
     class CustomTimeSeriesDataset(Dataset):
         def __init__(self, data, labels, train_indices, test_indices):
             self.train_data = [data[i] for i in train_indices]
@@ -171,3 +158,45 @@ def train_model(model, train_loader, num_epochs, criterion, optimizer):
             optimizer.step()
 
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+
+
+# Example usage with simulated data
+num_samples = 1000
+num_channels = 60
+sequence_length = 100  # Number of time steps in each sequence
+target_dimension = 4
+n_components = 10  # Number of components to keep after PCA
+batch_size = 32
+
+# Simulate EEG data (num_samples, num_channels, sequence_length)
+eeg_data = np.random.rand(num_samples, num_channels, sequence_length)
+
+# Simulate target angular motion velocity (num_samples, target_dimension)
+target_data = np.random.rand(num_samples, target_dimension)
+
+# Apply PCA
+eeg_data_pca = apply_pca(eeg_data, n_components)
+
+# Create windows
+eeg_window_size = 50
+joint_window_size = 10
+offset = 5
+data, labels = make_windows_with_fft(eeg_data_pca, target_data, eeg_window_size, joint_window_size, offset, debug=True)
+
+# Create DataLoader
+train_loader, test_loader = create_time_series_dataloaders(data, labels, batch_size, n_splits=5)
+
+# Create LSTM model
+input_size = n_components
+hidden_size = 64
+num_layers = 2
+output_size = target_dimension
+model = LSTM_model_maker(input_size, hidden_size, num_layers, output_size)
+
+# Define loss and optimizer
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+# Train model
+num_epochs = 20
+train_model(model, train_loader, num_epochs, criterion, optimizer)
