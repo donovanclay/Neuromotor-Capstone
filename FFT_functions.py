@@ -189,16 +189,38 @@ def LSTM_model_maker(input_size, hidden_size, num_layers, output_size):
 
     return LSTMModel(input_size, hidden_size, num_layers, output_size)
 
-def train_model(model, train_loader, num_epochs, criterion, optimizer):
+# def train_model(model, train_loader, num_epochs, criterion, optimizer, device='cpu'):
+#     model.train()
+#     for epoch in range(num_epochs):
+#         for i, (x, y) in enumerate(train_loader):
+#             x = x.view(x.size(0), -1, x.size(-1)).float()  
+#             y = y.view(-1, 1).float()  
+#             x, y = x.to(device), y.to(device)
+#             outputs = model(x)
+#             loss = criterion(outputs, y)
+#             optimizer.zero_grad()
+#             loss.backward()
+#             optimizer.step()
+
+#         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+
+def train_model(model, train_loader, num_epochs, criterion, optimizer, device='cpu'):
     model.train()
     for epoch in range(num_epochs):
-        for i, (x, y) in enumerate(train_loader):
+        total_loss = 0
+        progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f'Epoch {epoch+1}/{num_epochs}')
+        for i, (x, y) in progress_bar:
             x = x.view(x.size(0), -1, x.size(-1)).float()  
             y = y.view(-1, 1).float()  
+            x, y = x.to(device), y.to(device)
             outputs = model(x)
             loss = criterion(outputs, y)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+            
+            total_loss += loss.item()
+            progress_bar.set_postfix({'Loss': loss.item()})
+        
+        average_loss = total_loss / len(train_loader)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Average Loss: {average_loss:.4f}')
