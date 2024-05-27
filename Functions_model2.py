@@ -9,7 +9,9 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import MinMaxScaler
 from torch.nn.utils.rnn import pad_sequence
-
+from sklearn import preprocessing as prep 
+import scipy.interpolate as interp
+import scipy.signal as signal
 
 def velocity_rescaler(data):
     scalers = []
@@ -74,6 +76,60 @@ def fourier_transform(data, fs):
         output[i][1] = pairs[i][1]
     return output
 
+def split_sequences(sequences, n_steps_in):
+    sequences = np.real(sequences)
+    num_samples = len(sequences) - n_steps_in + 1
+    n_features1 = sequences.shape[1]
+    n_features2 = sequences.shape[2]
+    X = np.empty((num_samples, n_steps_in, n_features1, n_features2), dtype=sequences.dtype)
+    for i in range(num_samples):
+        end_x = i + n_steps_in
+        seq_x = sequences[i:end_x, :, :] 
+        X[i] = seq_x
+    return X
+
+def filter_and_interpolate(data, threshold=0.08):
+    # Compute the absolute differences between adjacent points
+    diff = np.abs(np.diff(data))
+    
+    # Identify indices where the difference exceeds the threshold
+    bad_indices = np.where(diff > threshold)[0] + 1
+    
+    # Create a mask to identify valid points
+    mask = np.ones(len(data), dtype=bool)
+    mask[bad_indices] = False
+    
+    # Interpolate using valid points
+    interp_func = interp.interp1d(np.flatnonzero(mask), data[mask], kind='linear', fill_value="extrapolate")
+    
+    # Replace bad points with interpolated values
+    data[bad_indices] = interp_func(bad_indices)
+    
+    return data
+
+
+def apply_stft(eeg_filtered, fs=100, window='hann', nperseg=20):
+    result = []
+    for channel in range(eeg_filtered.shape[1]):
+        f, t, Zxx = signal.stft(eeg_filtered[:, channel], fs=fs, window=window, nperseg=nperseg)
+        result.append(Zxx)
+    result = np.array(result)
+    return result, t
+
+def velocity_windower(velocity, time, window_size=1):
+    n_samples = len(time)
+    if n_samples == 0:
+        return np.array([])  # Return an empty array if time is empty
+    window_indices = [idx for idx in range(0, n_samples - window_size + 1, window_size)]
+    y = np.array([velocity[idx: idx + window_size] for idx in window_indices])  # output data
+    return y.reshape(y.shape[0], y.shape[-1])  # Flatten dimension=1
+
+def generate_y(output_sequence, n_steps_in):
+    y_length = len(output_sequence) - n_steps_in + 1
+    y = np.empty((y_length, *output_sequence.shape[1:]))
+    for i in range(y_length):
+        y[i] = output_sequence[i + n_steps_in - 1]
+    return y
 
 def make_windows_with_fft(ca_eeg, velocity_data, window_size, lowpass_cutoff=49, debug=False):
     """
