@@ -1,3 +1,5 @@
 *.DS_Store
 481-capstone
 __pycache__
+/final_slide_tex/*
+!/final_slide_tex/final_slide_team1.pdf
